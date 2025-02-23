@@ -1,0 +1,61 @@
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+/* Encabezado y navegación */
+header {
+    background-color: #007BFF;
+    padding: 15px 20px;
+    text-align: center;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    margin: 0 15px;
+    font-weight: bold;
+}
+
+nav a:hover {
+    text-decoration: underline;
+}
+
+/* Contenido principal */
+main {
+    max-width: 800px;
+    margin: 20px auto;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Títulos */
+h1 {
+    color: #007BFF;
+    text-align: center;
+}
+h2 {
+    color: black;
+    text-align: center;
+}
+
+/* Párrafos */
+p {
+    line-height: 2;
+    text-align: center;
+}
+
+/* Enlaces */
+a {
+    color: #007BFF;
+}
+
+a:hover {
+    text-decoration: underline;
+}
