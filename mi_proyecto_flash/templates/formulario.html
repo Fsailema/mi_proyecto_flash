@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Formulario de Contacto</h2>
-<form method="POST">
-    {{ form.hidden_tag() }}
-    <div>
-        {{ form.nombre.label }} <br>
-        {{ form.nombre(class="form-control") }}
-    </div>
-    <div>
-        {{ form.email.label }} <br>
-        {{ form.email(class="form-control") }}
-    </div>
-    <div>
-        {{ form.mensaje.label }} <br>
-        {{ form.mensaje(class="form-control") }}
-    </div>
-    <br>
-    {{ form.enviar(class="btn btn-primary") }}
-</form>
+    <h1>Formulario de Contacto</h1>
+    <form method="POST">
+        <div>
+            <label for="nombre">Nombre:</label>
+            <input type="text" id="nombre" name="nombre" required>
+        </div>
+        <div>
+            <label for="email">Correo Electrónico:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        <div>
+            <label for="mensaje">Mensaje:</label>
+            <textarea id="mensaje" name="mensaje" required></textarea>
+        </div>
+        <div>
+            <button type="submit">Enviar</button>
+        </div>
+    </form>
 {% endblock %}

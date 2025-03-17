@@ -1,193 +1,99 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
-import json
-import csv
-import os
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField
+from wtforms.validators import DataRequired
 
+# Configuraciones de la app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'mi_clave_secreta'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database/desarrollo_web.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:@localhost/desarrollo_web'
+app.config['SECRET_KEY'] = 'secretkey'  # Cambia esto por una clave segura
 db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
-# Verificar que la carpeta 'datos' exista
-if not os.path.exists('datos'):
-    os.makedirs('datos')
-
-# Modelo de la base de datos
-class Usuario(db.Model):
+# Modelo de usuario
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    edad = db.Column(db.Integer, nullable=False)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
 
-# ==========================
-# Rutas de la aplicación
+# Cargar el usuario
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# Formulario de login
+class LoginForm(FlaskForm):
+    username = StringField('nombre de usuario', validators=[DataRequired()])
+    password = PasswordField('contraeña', validators=[DataRequired()])
+
+# Rutas
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    form = LoginForm()  # Crear el formulario aquí
+
+    if form.validate_on_submit():
+        username = form.username.data
+        password = form.password.data
+
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            return redirect(url_for('index'))
+        else:
+            flash('Credenciales incorrectas.')
+
+    return render_template('login.html', form=form)
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        hashed_password = generate_password_hash(password, method='sha256')
+        new_user = User(username=username, password=hashed_password)
+
+        db.session.add(new_user)
+        db.session.commit()
+        flash('Usuario registrado con éxito.')
+        return redirect(url_for('login'))
+
+    return render_template('formulario.html')
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/formulario')
+@app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
+    if request.method == 'POST':
+        # Capturamos los datos del formulario
+        nombre = request.form['nombre']
+        email = request.form['email']
+        mensaje = request.form['mensaje']
+
+        # Redirigir a la página de resultados con los datos capturados
+        return render_template('resultado.html', nombre=nombre, email=email, mensaje=mensaje)
+
+    # Renderiza el formulario en caso de que sea un GET
     return render_template('formulario.html')
 
-@app.route('/prueba')
-def prueba():
-    return jsonify({"mensaje": "Ruta de prueba funcionando correctamente"})
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
-
-# ==========================
-# PERSISTENCIA EN ARCHIVOS
-
-@app.route('/guardar_txt', methods=['POST'])
-def guardar_txt():
-    data = request.json
-    if not data.get('nombre') or not data.get('edad'):
-        return jsonify({"mensaje": "Nombre y edad son campos obligatorios"}), 400
-
-    with open('datos/datos.txt', 'a') as file:
-        file.write(f"{data['nombre']}, {data['edad']}\n")
-    return jsonify({"mensaje": "Datos guardados en TXT"})
-
-@app.route('/leer_txt', methods=['GET'])
-def leer_txt():
-    archivo = 'datos/datos.txt'
-    if not os.path.exists(archivo):
-        return jsonify({"mensaje": "Archivo vacío o no existe"})
-
-    with open(archivo, 'r') as file:
-        contenido = file.readlines()
-    return jsonify({"datos": contenido})
-
-@app.route('/guardar_json', methods=['POST'])
-def guardar_json():
-    data = request.json
-    if not data.get('nombre') or not data.get('edad'):
-        return jsonify({"mensaje": "Nombre y edad son campos obligatorios"}), 400
-
-    archivo = 'datos/datos.json'
-    contenido = []
-
-    if os.path.exists(archivo):
-        try:
-            with open(archivo, 'r') as file:
-                contenido = json.load(file)
-        except json.JSONDecodeError:
-            pass
-
-    contenido.append(data)
-
-    with open(archivo, 'w') as file:
-        json.dump(contenido, file, indent=4)
-
-    return jsonify({"mensaje": "Datos guardados en JSON"})
-
-@app.route('/leer_json', methods=['GET'])
-def leer_json():
-    archivo = 'datos/datos.json'
-    if not os.path.exists(archivo):
-        return jsonify({"mensaje": "Archivo vacío o no existe"})
-
-    try:
-        with open(archivo, 'r') as file:
-            contenido = json.load(file)
-    except json.JSONDecodeError:
-        return jsonify({"mensaje": "Error en la lectura del archivo JSON"}), 500
-
-    return jsonify({"datos": contenido})
-
-@app.route('/guardar_csv', methods=['POST'])
-def guardar_csv():
-    data = request.json
-    if not data.get('nombre') or not data.get('edad'):
-        return jsonify({"mensaje": "Nombre y edad son campos obligatorios"}), 400
-
-    archivo = 'datos/datos.csv'
-    existe = os.path.exists(archivo)
-
-    with open(archivo, 'a', newline='') as file:
-        writer = csv.writer(file)
-        if not existe:
-            writer.writerow(["nombre", "edad"])
-        writer.writerow([data['nombre'], data['edad']])
-
-    return jsonify({"mensaje": "Datos guardados en CSV"})
-
-@app.route('/leer_csv', methods=['GET'])
-def leer_csv():
-    archivo = 'datos/datos.csv'
-    if not os.path.exists(archivo):
-        return jsonify({"mensaje": "Archivo vacío o no existe"})
-
-    with open(archivo, 'r') as file:
-        reader = csv.DictReader(file)
-        contenido = [row for row in reader]
-
-    return jsonify({"datos": contenido})
-
-# ==========================
-# PERSISTENCIA EN SQLite
-
-@app.route('/guardar_usuario', methods=['POST'])
-def guardar_usuario():
-    data = request.json
-    if not data.get('nombre') or not data.get('edad'):
-        return jsonify({"mensaje": "Nombre y edad son campos obligatorios"}), 400
-
-    try:
-        nuevo_usuario = Usuario(nombre=data['nombre'], edad=data['edad'])
-        db.session.add(nuevo_usuario)
-        db.session.commit()
-    except Exception as e:
-        return jsonify({"mensaje": f"Error al guardar usuario en SQLite: {str(e)}"}), 500
-
-    return jsonify({"mensaje": "Usuario guardado en SQLite"})
-
-@app.route('/leer_usuarios', methods=['GET'])
-def leer_usuarios():
-    try:
-        usuarios = Usuario.query.all()
-        resultado = [{"id": u.id, "nombre": u.nombre, "edad": u.edad} for u in usuarios]
-    except Exception as e:
-        return jsonify({"mensaje": f"Error al obtener usuarios de la base de datos: {str(e)}"}), 500
-
-    return jsonify({"usuarios": resultado})
-
-@app.route('/usuario/<int:id>', methods=['GET'])
-def obtener_usuario(id):
-    usuario = Usuario.query.get(id)
-    if usuario:
-        return jsonify({"id": usuario.id, "nombre": usuario.nombre, "edad": usuario.edad})
-    return jsonify({"mensaje": "Usuario no encontrado"}), 404
-
-@app.route('/eliminar_usuario/<int:id>', methods=['DELETE'])
-def eliminar_usuario(id):
-    usuario = Usuario.query.get(id)
-    if usuario:
-        db.session.delete(usuario)
-        db.session.commit()
-        return jsonify({"mensaje": "Usuario eliminado"})
-    return jsonify({"mensaje": "Usuario no encontrado"}), 404
-
-from sqlalchemy import text
-
-@app.route('/test_db')
-def test_db():
-    try:
-        # Ejecutar la consulta correctamente usando 'text'
-        resultado = db.session.execute(text("SELECT 1")).fetchall()
-        return jsonify({"mensaje": "Conexión exitosa a la base de datos"}) if resultado else jsonify({"mensaje": "Conexión fallida"}), 500
-    except Exception as e:
-        return jsonify({"mensaje": f"Error al conectar a la base de datos: {str(e)}"}), 500
-
-# ==========================
-# Creación de la base de datos
-try:
-    with app.app_context():
-        db.create_all()
-except Exception as e:
-    print(f"Error al crear la base de datos: {e}")
-
+# Ejecutar la aplicación
 if __name__ == '__main__':
     app.run(debug=True)
