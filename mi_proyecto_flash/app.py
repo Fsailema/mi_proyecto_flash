@@ -1,99 +1,168 @@
-from flask import Flask, render_template, redirect, url_for, request, flash
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for, g
+import pymysql
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField
-from wtforms.validators import DataRequired
+from pymysql.cursors import DictCursor
+from forms import ProductoForm  # Importar el formulario
 
-# Configuraciones de la app
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:@localhost/desarrollo_web'
-app.config['SECRET_KEY'] = 'secretkey'  # Cambia esto por una clave segura
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+app.secret_key = 'supersecretkey'  # Necesario para las sesiones de Flask
 
-# Modelo de usuario
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(150), nullable=False)
+# Configuración de la base de datos
+DB_CONFIG = {
+    "host": "localhost",
+    "user": "favi",
+    "password": "favio",  # Agrega tu contraseña si es necesaria
+    "database": "desarrollo_web",
+    "cursorclass": DictCursor  # Devuelve resultados como diccionarios
+}
 
-# Cargar el usuario
+# Configuración de Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"  # Ruta de login si el usuario no está autenticado
+
+# Función para obtener conexión a la base de datos
+def get_db():
+    if 'db' not in g:
+        g.db = pymysql.connect(**DB_CONFIG)
+    return g.db
+
+# Cerrar la conexión después de cada solicitud
+@app.teardown_appcontext
+def close_db(error=None):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+# Clase User para Flask-Login
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+    @staticmethod
+    def get(user_id):
+        db = get_db()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+            user = cursor.fetchone()
+            if user:
+                return User(user['id'])
+            return None
+
+# Cargar el usuario con Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return User.get(user_id)
 
-# Formulario de login
-class LoginForm(FlaskForm):
-    username = StringField('nombre de usuario', validators=[DataRequired()])
-    password = PasswordField('contraeña', validators=[DataRequired()])
+# 🛠 Crear Producto
+@app.route('/crear', methods=['GET', 'POST'])
+@login_required  # Asegura que solo los usuarios autenticados puedan crear productos
+def crear_producto():
+    form = ProductoForm()  # Crear una instancia del formulario
 
-# Rutas
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
+    if form.validate_on_submit():  # Si el formulario se envía correctamente
+        nombre = form.nombre.data
+        precio = form.precio.data
+        stock = form.stock.data
+        try:
+            db = get_db()
+            with db.cursor() as cursor:
+                cursor.execute("INSERT INTO productos (nombre, precio, stock) VALUES (%s, %s, %s)",
+                               (nombre, precio, stock))
+                db.commit()
+            return redirect(url_for('mostrar_productos'))
+        except pymysql.MySQLError as e:
+            return f"Error en la base de datos: {e}"
+    return render_template('formulario.html', form=form)  # Pasamos el formulario al template
 
-    form = LoginForm()  # Crear el formulario aquí
+# 🛠 Leer Productos
+@app.route('/productos')
+@login_required  # Asegura que solo los usuarios autenticados puedan ver los productos
+def mostrar_productos():
+    try:
+        db = get_db()  # Esta línea debe estar separada
+        with db.cursor() as cursor:
+            cursor.execute("SELECT * FROM productos")
+            productos = cursor.fetchall()
+        return render_template('productos.html', productos=productos)
+    except pymysql.MySQLError as e:
+        return f"Error en la base de datos: {e}"
 
-    if form.validate_on_submit():
-        username = form.username.data
-        password = form.password.data
+# 🛠 Actualizar Producto
+@app.route('/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_producto(id):
+    form = ProductoForm()  # Crear una instancia del formulario
+    try:
+        db = get_db()
+        with db.cursor() as cursor:
+            if request.method == 'POST' and form.validate_on_submit():
+                nombre = form.nombre.data
+                precio = form.precio.data
+                stock = form.stock.data
+                cursor.execute("UPDATE productos SET nombre=%s, precio=%s, stock=%s WHERE id_producto=%s",
+                               (nombre, precio, stock, id))
+                db.commit()
+                return redirect(url_for('mostrar_productos'))
 
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            return redirect(url_for('index'))
-        else:
-            flash('Credenciales incorrectas.')
+            cursor.execute("SELECT * FROM productos WHERE id_producto=%s", (id,))
+            producto = cursor.fetchone()
+            form.nombre.data = producto['nombre']
+            form.precio.data = producto['precio']
+            form.stock.data = producto['stock']
+        return render_template('formulario.html', form=form)  # Pasamos el formulario al template
+    except pymysql.MySQLError as e:
+        return f"Error en la base de datos: {e}"
 
-    return render_template('login.html', form=form)
+# 🛠 Eliminar Producto
+@app.route('/eliminar/<int:id>')
+@login_required
+def eliminar_producto(id):
+    try:
+        db = get_db()
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM productos WHERE id_producto=%s", (id,))
+            db.commit()
+        return redirect(url_for('mostrar_productos'))
+    except pymysql.MySQLError as e:
+        return f"Error en la base de datos: {e}"
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        hashed_password = generate_password_hash(password, method='sha256')
-        new_user = User(username=username, password=hashed_password)
-
-        db.session.add(new_user)
-        db.session.commit()
-        flash('Usuario registrado con éxito.')
-        return redirect(url_for('login'))
-
-    return render_template('formulario.html')
-
+# 🏠 Página de inicio
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/formulario', methods=['GET', 'POST'])
-def formulario():
-    if request.method == 'POST':
-        # Capturamos los datos del formulario
-        nombre = request.form['nombre']
-        email = request.form['email']
-        mensaje = request.form['mensaje']
-
-        # Redirigir a la página de resultados con los datos capturados
-        return render_template('resultado.html', nombre=nombre, email=email, mensaje=mensaje)
-
-    # Renderiza el formulario en caso de que sea un GET
-    return render_template('formulario.html')
-
+# 📄 Página "Acerca de"
 @app.route('/about')
 def about():
     return render_template('about.html')
 
-# Ejecutar la aplicación
+# 🚪 Iniciar sesión
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        db = get_db()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE username=%s", (username,))
+            user = cursor.fetchone()
+
+            if user and check_password_hash(user['password'], password):  # Verificar el hash de la contraseña
+                login_user(User(user['id']))
+                return redirect(url_for('index'))
+
+        return 'Credenciales incorrectas', 401
+
+    return render_template('login.html')
+
+# 🚪 Cerrar sesión
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
     app.run(debug=True)

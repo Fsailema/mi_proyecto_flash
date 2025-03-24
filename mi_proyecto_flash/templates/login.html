@@ -1,50 +1,21 @@
 {% extends 'base.html' %}
 
 {% block content %}
-    <h1>Iniciar sesión</h1>
+    <form method="POST">
+        {{ form.hidden_tag() }}  <!-- Este genera el campo CSRF -->
 
-    <!-- Mostrar mensajes flash -->
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <ul>
-                {% for message in messages %}
-                    <li>{{ message }}</li>
-                {% endfor %}
-            </ul>
-        {% endif %}
-    {% endwith %}
+        <div>
+            {{ form.username.label }}  <!-- Etiqueta para el campo de username -->
+            {{ form.username(size=20) }}  <!-- Renderiza el campo del formulario -->
+        </div>
 
-    <!-- Formulario de inicio de sesión -->
-    <form method="POST" action="{{ url_for('login') }}">
-        {{ form.hidden_tag() }}
         <div>
-            <label for="username">{{ form.username.label }}</label><br>
-            {{ form.username() }}
-            <!-- Mostrar errores si hay -->
-            {% if form.username.errors %}
-                <ul>
-                    {% for error in form.username.errors %}
-                        <li>{{ error }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
+            {{ form.password.label }}  <!-- Etiqueta para el campo de password -->
+            {{ form.password(size=20) }}  <!-- Renderiza el campo del formulario -->
         </div>
-        <div>
-            <label for="password">{{ form.password.label }}</label><br>
-            {{ form.password() }}
-            <!-- Mostrar errores si hay -->
-            {% if form.password.errors %}
-                <ul>
-                    {% for error in form.password.errors %}
-                        <li>{{ error }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        </div>
+
         <div>
             <button type="submit">Iniciar sesión</button>
         </div>
     </form>
-
-    <p>No tienes cuenta? <a href="{{ url_for('register') }}">Regístrate aquí</a></p>
 {% endblock %}
