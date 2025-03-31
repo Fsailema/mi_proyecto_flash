@@ -1,12 +1,10 @@
-{% extends "base.html" %}
-
-{% block title %}Inicio{% endblock %}
-
-{% block content %}
-    <h1>Bienvenido a la página de inicio</h1>
-    <h2>SaileWood´S</h2>
-    <p>Arte y pasión por la madera</p>
-
-{% endblock %}
-
-
+<h1>Productos</h1>
+<a href="{{ url_for('agregar_producto') }}">Agregar Producto</a>
+<ul>
+    {% for producto in productos %}
+        <li>{{ producto.nombre }} - ${{ producto.precio }} - Stock: {{ producto.stock }}
+            <a href="{{ url_for('editar_producto', id=producto.id) }}">Editar</a>
+            <a href="{{ url_for('eliminar_producto', id=producto.id) }}">Eliminar</a>
+        </li>
+    {% endfor %}
+</ul>
